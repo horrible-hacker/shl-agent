@@ -1,15 +1,14 @@
 import os
 import json
+from fastapi import FastAPI
+from dotenv import load_dotenv
 from groq import Groq
 from catalog import search_catalog, format_for_prompt, CATALOG
 
-from dotenv import load_dotenv
 load_dotenv()
 
-api_key = os.environ.get("GROQ_API_KEY")
-if not api_key:
-    raise ValueError("GROQ_API_KEY not set")
-client = Groq(api_key=api_key)
+app = FastAPI()
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 SYSTEM_PROMPT = """You are an SHL assessment advisor. Your job is to help hiring managers find the right SHL assessments from the official catalog.
 
