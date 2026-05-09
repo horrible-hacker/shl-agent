@@ -84,7 +84,7 @@ def chat(messages: list) -> dict:
         groq_messages.append({"role": m["role"], "content": m["content"]})
 
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         messages=groq_messages,
         temperature=0.3,
         max_tokens=1500
