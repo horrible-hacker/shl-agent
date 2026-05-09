@@ -67,10 +67,10 @@ SYNONYMS = {
     "full-stack": ["java", "sql", "spring", "angular"],
 
     # Microsoft Office
-    "excel": ["excel", "microsoft excel", "spreadsheet"],
-    "word": ["word", "microsoft word"],
-    "office": ["excel", "word", "microsoft", "office"],
-    "powerpoint": ["powerpoint", "microsoft powerpoint"],
+    "excel": ["excel", "microsoft excel", "spreadsheet", "365"],
+    "word": ["word", "microsoft word", "365"],
+    "admin": ["excel", "word", "microsoft", "office", "administrative"],
+    "assistant": ["excel", "word", "microsoft", "office"],
 
     # Contact center / customer service
     "contact": ["contact", "customer service", "call center", "svar"],
