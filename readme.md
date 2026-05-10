@@ -13,56 +13,78 @@ Hiring managers can't always articulate what they need. Traditional keyword sear
 | LLM | Groq — llama-3.3-70b-versatile | Free, fast (<3s), OpenAI-compatible |
 | API | FastAPI + Uvicorn | Lightweight, async, auto validation |
 | Catalog | JSON file (in-memory) | ~400 items, fits in RAM |
-| Retrieval | Keyword scoring | No vector DB needed at this scale |
+| Retrieval | Semantic search via Sentence Transformers | Handles vocabulary mismatch, no vector DB needed |
+| Embeddings | all-MiniLM-L6-v2 (local) | Free, fast, runs on CPU, no API key needed |
 | Deployment | Railway | Free tier, auto-deploy on push |
-| Agent Logic | Raw Python + Groq SDK | No LangChain — simpler, faster |
+| Agent Logic | Raw Python + Groq SDK | No LangChain — simpler, faster, easier to debug |
 
 ## Architecture
 ```
 POST /chat
-  → concatenate all user messages → keyword search catalog (top 15)
+  → concatenate all user messages
+  → embed query with all-MiniLM-L6-v2
+  → cosine similarity search over pre-embedded catalog (top 15)
   → inject matches into system prompt
-  → Groq LLM generates JSON reply
-  → validate URLs against catalog
-  → return structured response
+  → Groq LLM generates structured JSON reply
+  → validate all URLs against catalog set
+  → return response
 ```
 
 ## Agent Behaviors
-- **Clarify** — asks 1 question if role/level/skills all unknown. Max 2 clarifying turns.
-- **Recommend** — once role OR level OR skills known, recommends 3–10 assessments immediately.
+- **Clarify** — asks 1 question if message has zero context. Max 1 clarifying turn.
+- **Recommend** — once role OR level OR skill OR industry known, recommends 3–10 assessments immediately.
 - **Refine** — updates shortlist when user changes constraints without restarting.
 - **Compare** — answers comparison questions using only injected catalog data.
-- **In-scope only** — refuses legal advice, general HR questions, prompt injection.
+- **In-scope only** — refuses legal advice, general HR questions, salary questions, prompt injection.
 
-## Retrieval
-Each catalog item is scored by counting query words found in: name + description + keys + job levels. Top 15 injected into prompt as plain text. All returned URLs validated against catalog — hallucinated links stripped.
+## Retrieval Setup
+At startup, all ~400 catalog items are embedded once using `all-MiniLM-L6-v2` and stored in memory. For each request, the full conversation history (all user turns concatenated) is embedded and compared via cosine similarity to find the top 15 most relevant assessments. These are injected as structured text into the system prompt.
 
-## Project Structure
-```
-shl-agent/
-├── main.py        # FastAPI app
-├── catalog.py     # load & search catalog
-├── agent.py       # Groq LLM + prompt logic
-├── data/
-│   └── catalog.json
-└── requirements.txt
-```
+This approach handles vocabulary mismatch — e.g. "plant operators" finds safety assessments even without exact keyword overlap.
+
+All returned URLs are validated against the catalog set — hallucinated links are stripped before response is returned.
+
+## Evaluation Approach
+- Tested against all 10 public conversation traces
+- Measured Recall@10 per trace and mean across all traces
+- Verified schema compliance on every response (`reply`, `recommendations`, `end_of_conversation`)
+- Confirmed all returned URLs exist in catalog
+- Behavior probes: refusal of off-topic queries, schema fields, refinement, URL validity
 
 ## What Worked
+- Semantic search with sentence transformers handled vocabulary mismatch better than pure keyword matching
 - Per-request catalog injection kept prompts focused and relevant
 - Explicit turn limits in prompt forced earlier recommendations improving Recall@10
 - URL validation post-processing eliminated hallucinated links
 - Concatenating all user turns for search improved catalog match quality
 
 ## What Didn't Work
-- Initial system prompt was too conservative — agent kept asking clarifying questions even after sufficient context was provided, hurting recall on early turns. Fixed by explicitly instructing the model to recommend as soon as role OR level OR skills are known.
-- Keyword search occasionally missed relevant assessments when user phrasing differed from catalog vocabulary; partially mitigated by using full conversation history for search instead of just the last message.
+- Initial system prompt was too conservative — agent kept asking clarifying questions even after sufficient context was provided, hurting recall on early turns. Fixed by explicitly instructing the model to recommend as soon as any role, level, skill, or industry is mentioned.
+- Pure keyword search missed relevant assessments when user phrasing differed from catalog vocabulary (e.g. "plant operators" not matching "safety"). Fixed by switching to semantic embeddings.
+- Smaller free models (HuggingFace 8B) produced lower quality recommendations and struggled to follow JSON output format consistently. Groq llama-3.3-70b gave significantly better results.
+
+## AI Tools Used
+Claude (Anthropic) was used for scaffolding the project structure, iterating on the system prompt, debugging deployment issues, and writing the eval script. All code was reviewed and manually tested. Core design decisions — retrieval strategy, prompt rules, URL validation — were made by the author.
+
+## Project Structure
+```
+shl-agent/
+├── main.py          # FastAPI app
+├── catalog.py       # semantic search over catalog
+├── agent.py         # Groq LLM + prompt logic
+├── eval.py          # evaluation script
+├── data/
+│   └── catalog.json
+├── models/
+│   └── all-MiniLM-L6-v2/  # local embedding model
+└── requirements.txt
+```
 
 ## Setup
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install fastapi uvicorn groq python-dotenv
+pip install fastapi uvicorn groq python-dotenv sentence-transformers scikit-learn numpy
 export GROQ_API_KEY=your_key_here
 uvicorn main:app --reload --port 8000
 ```
