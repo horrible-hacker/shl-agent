@@ -10,22 +10,23 @@ Hiring managers can't always articulate what they need. Traditional keyword sear
 ## Tech Stack
 | Component | Choice | Reason |
 |---|---|---|
-| LLM | Groq — llama-3.3-70b-versatile | Free, fast (<3s), OpenAI-compatible |
+| LLM | Groq — `meta-llama/llama-4-scout-17b-16e-instruct` | Fast inference, OpenAI-compatible, strong instruction following |
 | API | FastAPI + Uvicorn | Lightweight, async, auto validation |
 | Catalog | JSON file (in-memory) | ~400 items, fits in RAM |
 | Retrieval | Semantic search via Sentence Transformers | Handles vocabulary mismatch, no vector DB needed |
-| Embeddings | all-MiniLM-L6-v2 (local) | Free, fast, runs on CPU, no API key needed |
+| Embeddings | `all-MiniLM-L6-v2` (local) | Free, fast, runs on CPU, no API key needed |
 | Deployment | Railway | Free tier, auto-deploy on push |
 | Agent Logic | Raw Python + Groq SDK | No LangChain — simpler, faster, easier to debug |
 
 ## Architecture
-```
+
+```text
 POST /chat
   → concatenate all user messages
   → embed query with all-MiniLM-L6-v2
   → cosine similarity search over pre-embedded catalog (top 15)
   → inject matches into system prompt
-  → Groq LLM generates structured JSON reply
+  → Groq LLM (`meta-llama/llama-4-scout-17b-16e-instruct`) generates structured JSON reply
   → validate all URLs against catalog set
   → return response
 ```
@@ -51,6 +52,12 @@ All returned URLs are validated against the catalog set — hallucinated links a
 - Confirmed all returned URLs exist in catalog
 - Behavior probes: refusal of off-topic queries, schema fields, refinement, URL validity
 
+## Performance
+- Warm request latency typically stays between ~1–2.5 seconds
+- Retrieval latency remains sub-100ms due to in-memory embeddings
+- Main latency contributor is Groq inference time
+- Cold starts mainly come from Railway container wake-up and embedding model initialization
+
 ## What Worked
 - Semantic search with sentence transformers handled vocabulary mismatch better than pure keyword matching
 - Per-request catalog injection kept prompts focused and relevant
@@ -61,13 +68,14 @@ All returned URLs are validated against the catalog set — hallucinated links a
 ## What Didn't Work
 - Initial system prompt was too conservative — agent kept asking clarifying questions even after sufficient context was provided, hurting recall on early turns. Fixed by explicitly instructing the model to recommend as soon as any role, level, skill, or industry is mentioned.
 - Pure keyword search missed relevant assessments when user phrasing differed from catalog vocabulary (e.g. "plant operators" not matching "safety"). Fixed by switching to semantic embeddings.
-- Smaller free models (HuggingFace 8B) produced lower quality recommendations and struggled to follow JSON output format consistently. Groq llama-3.3-70b gave significantly better results.
+- Smaller free models (HuggingFace 8B) produced lower quality recommendations and struggled to follow JSON output format consistently. Groq's `meta-llama/llama-4-scout-17b-16e-instruct` provided significantly better instruction following, response quality, and JSON consistency while maintaining low latency.
 
 ## AI Tools Used
 Claude (Anthropic) was used for scaffolding the project structure, iterating on the system prompt, debugging deployment issues, and writing the eval script. All code was reviewed and manually tested. Core design decisions — retrieval strategy, prompt rules, URL validation — were made by the author.
 
 ## Project Structure
-```
+
+```text
 shl-agent/
 ├── main.py          # FastAPI app
 ├── catalog.py       # semantic search over catalog
@@ -81,6 +89,7 @@ shl-agent/
 ```
 
 ## Setup
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
